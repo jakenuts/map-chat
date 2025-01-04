@@ -1,150 +1,142 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap, LayersControl, FeatureGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { lineString, polygon, featureCollection } from '@turf/helpers';
-import length from '@turf/length';
-import area from '@turf/area';
-import buffer from '@turf/buffer';
-import { MapMethods, MapState, Layer } from '../lib/types';
-import type { Feature, FeatureCollection, Geometry, GeoJsonProperties } from 'geojson';
+import { MapMethods, MapState, Layer, GeoJSONFeature, FeatureId } from '../lib/types';
+import { LayerService } from '../lib/services/layer';
+import { logMessage } from '../lib/utils/logging';
+import { toGeoJSONFeature, fromGeoJSONFeature } from '../lib/utils/geo';
+import { Feature, Geometry } from 'geojson';
 
 interface MapComponentProps {
-  onMapReady: (methods: MapMethods) => void;
+  onMapMethods?: (methods: MapMethods) => void;
+  initialState?: Partial<MapState>;
 }
 
-// Map Controller component to handle map methods
-const MapController: React.FC<{ onMapReady: (methods: MapMethods) => void }> = ({ onMapReady }) => {
-  const map = useMap();
-  const layerGroups = useRef<Record<string, L.LayerGroup>>({});
+type LeafletGeoJSONLayer = L.GeoJSON<any>;
+
+export const MapComponent: React.FC<MapComponentProps> = ({ 
+  onMapMethods,
+  initialState 
+}) => {
+  const mapRef = useRef<L.Map | null>(null);
+  const layerServiceRef = useRef<LayerService>(new LayerService(initialState));
+  const [layerGroups, setLayerGroups] = useState<Record<string, L.LayerGroup>>({});
 
   useEffect(() => {
-    const methods: MapMethods = {
-      zoomTo: (coordinates: [number, number], zoom: number = 13) => {
-        map.setView(coordinates, zoom);
-      },
+    if (!mapRef.current) {
+      const map = L.map('map').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      mapRef.current = map;
 
-      addFeature: (feature, layerId = 'default', style) => {
-        if (!layerGroups.current[layerId]) {
-          layerGroups.current[layerId] = L.layerGroup().addTo(map);
-        }
+      // Initialize default layer groups
+      const defaultGroups = {
+        markers: L.layerGroup().addTo(map),
+        features: L.layerGroup().addTo(map),
+        buffers: L.layerGroup().addTo(map)
+      };
+      setLayerGroups(defaultGroups);
+    }
 
-        const layer = L.geoJSON(feature as GeoJSON.GeoJsonObject, { style });
-        layerGroups.current[layerId].addLayer(layer);
-      },
-
-      modifyFeature: (featureId, properties) => {
-        Object.values(layerGroups.current).forEach(group => {
-          group.eachLayer(layer => {
-            if (layer instanceof L.GeoJSON && 
-                layer.feature && 
-                'id' in layer.feature && 
-                layer.feature.id === featureId) {
-              layer.feature.properties = { 
-                ...(layer.feature.properties || {}), 
-                ...properties 
-              };
-            }
-          });
-        });
-      },
-
-      removeFeature: (featureId, layerId?) => {
-        const groups = layerId 
-          ? [layerGroups.current[layerId]]
-          : Object.values(layerGroups.current);
-
-        groups.forEach(group => {
-          group.eachLayer(layer => {
-            if (layer instanceof L.GeoJSON && 
-                layer.feature && 
-                'id' in layer.feature && 
-                layer.feature.id === featureId) {
-              group.removeLayer(layer);
-            }
-          });
-        });
-      },
-
-      styleFeature: (featureId, style) => {
-        Object.values(layerGroups.current).forEach(group => {
-          group.eachLayer(layer => {
-            if (layer instanceof L.GeoJSON && 
-                layer.feature && 
-                'id' in layer.feature && 
-                layer.feature.id === featureId) {
-              layer.setStyle(style);
-            }
-          });
-        });
-      },
-
-      measure: (type, features) => {
-        if (type === 'distance') {
-          const coordinates = features.flatMap(f => 
-            f.geometry.type === 'Point' ? [f.geometry.coordinates as [number, number]] : []
-          );
-          const line = lineString(coordinates);
-          return length(line);
-        } else {
-          const coordinates = features.flatMap(f => 
-            f.geometry.type === 'Point' ? [f.geometry.coordinates as [number, number]] : []
-          );
-          const poly = polygon([coordinates]);
-          return area(poly);
-        }
-      },
-
-      buffer: (feature, distance, units) => {
-        try {
-          const buffered = buffer(feature, distance, units);
-          if (!buffered) return feature;
-          return buffered as Feature<Geometry, GeoJsonProperties>;
-        } catch (error) {
-          console.error('Buffer operation failed:', error);
-          return feature;
-        }
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
     };
+  }, []);
 
-    onMapReady(methods);
-  }, [map, onMapReady]);
+  useEffect(() => {
+    if (mapRef.current && onMapMethods) {
+      const methods: MapMethods = {
+        zoomTo: (coordinates: [number, number], zoom: number = 13) => {
+          mapRef.current?.setView(coordinates, zoom);
+          logMessage('map_command', { type: 'zoom_to', coordinates, zoom });
+        },
 
-  return null;
-};
+        addFeature: (feature: GeoJSONFeature, layerId: string, style?: L.PathOptions) => {
+          const layerGroup = layerGroups[layerId];
+          if (!layerGroup) {
+            logMessage('error', { type: 'layer_error', message: `Layer ${layerId} not found` });
+            return;
+          }
 
-export const MapComponent: React.FC<MapComponentProps> = ({ onMapReady }) => {
-  const [mapState, setMapState] = useState<MapState>({
-    layers: [],
-    mode: 'view'
-  });
+          const geoJsonFeature = fromGeoJSONFeature(feature);
+          const geoJsonLayer = L.geoJSON(geoJsonFeature, { style }) as LeafletGeoJSONLayer;
+          layerGroup.addLayer(geoJsonLayer);
+          layerServiceRef.current.addFeatureToLayer(layerId, geoJsonFeature);
+          logMessage('map_command', { type: 'add_feature', layerId, feature });
+        },
 
-  return (
-    <div className="h-full w-full">
-      <MapContainer
-        center={[51.505, -0.09]}
-        zoom={13}
-        className="h-full w-full"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <LayersControl position="topright">
-          {mapState.layers.map(layer => (
-            <LayersControl.Overlay 
-              key={layer.id} 
-              name={layer.name} 
-              checked={layer.visible}
-            >
-              <FeatureGroup>
-                {/* Layer features will be added here dynamically */}
-              </FeatureGroup>
-            </LayersControl.Overlay>
-          ))}
-        </LayersControl>
-        <MapController onMapReady={onMapReady} />
-      </MapContainer>
-    </div>
-  );
+        modifyFeature: (featureId: FeatureId, properties: Record<string, any>) => {
+          const feature = layerServiceRef.current.getFeatureById(featureId);
+          if (feature) {
+            feature.properties = { ...feature.properties, ...properties };
+            // Refresh the layer to show updated properties
+            Object.values(layerGroups).forEach(group => {
+              group.eachLayer(layer => {
+                if (layer instanceof L.GeoJSON) {
+                  const geoJsonLayer = layer as LeafletGeoJSONLayer;
+                  const layerFeature = geoJsonLayer.feature as Feature<Geometry>;
+                  if (layerFeature?.id === featureId) {
+                    geoJsonLayer.setStyle(properties as L.PathOptions);
+                  }
+                }
+              });
+            });
+            logMessage('map_command', { type: 'modify_feature', featureId, properties });
+          }
+        },
+
+        removeFeature: (featureId: FeatureId, layerId: string) => {
+          const layerGroup = layerGroups[layerId];
+          if (layerGroup) {
+            layerGroup.eachLayer(layer => {
+              if (layer instanceof L.GeoJSON) {
+                const geoJsonLayer = layer as LeafletGeoJSONLayer;
+                const layerFeature = geoJsonLayer.feature as Feature<Geometry>;
+                if (layerFeature?.id === featureId) {
+                  layerGroup.removeLayer(layer);
+                }
+              }
+            });
+            layerServiceRef.current.removeFeature(layerId, featureId);
+            logMessage('map_command', { type: 'remove_feature', layerId, featureId });
+          }
+        },
+
+        styleFeature: (featureId: FeatureId, style: L.PathOptions) => {
+          Object.values(layerGroups).forEach(group => {
+            group.eachLayer(layer => {
+              if (layer instanceof L.GeoJSON) {
+                const geoJsonLayer = layer as LeafletGeoJSONLayer;
+                const layerFeature = geoJsonLayer.feature as Feature<Geometry>;
+                if (layerFeature?.id === featureId) {
+                  geoJsonLayer.setStyle(style);
+                }
+              }
+            });
+          });
+          logMessage('map_command', { type: 'style_feature', featureId, style });
+        },
+
+        measure: (type: 'distance' | 'area', features: GeoJSONFeature[]): number => {
+          // TODO: Implement measurement calculations using turf.js
+          logMessage('map_command', { type: 'measure', measureType: type, features });
+          return 0;
+        },
+
+        buffer: (feature: GeoJSONFeature, distance: number, units: 'kilometers' | 'miles' | 'meters'): GeoJSONFeature => {
+          // TODO: Implement buffer creation using turf.js
+          logMessage('map_command', { type: 'buffer', feature, distance, units });
+          return feature;
+        }
+      };
+
+      onMapMethods(methods);
+    }
+  }, [onMapMethods, layerGroups]);
+
+  return <div id="map" className="h-full w-full" />;
 };
