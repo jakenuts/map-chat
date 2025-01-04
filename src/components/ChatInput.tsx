@@ -1,5 +1,4 @@
 import React, { useState, KeyboardEvent } from 'react';
-import { SendOutlined } from '@ant-design/icons';
 import { cn } from '../lib/utils';
 
 interface ChatInputProps {
@@ -7,52 +6,57 @@ interface ChatInputProps {
   disabled?: boolean;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({
-  onSendMessage,
-  disabled = false,
-}) => {
+export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, disabled = false }) => {
   const [message, setMessage] = useState('');
 
-  const handleSend = () => {
+  const handleSubmit = () => {
     if (message.trim() && !disabled) {
-      onSendMessage(message.trim());
+      onSendMessage(message);
       setMessage('');
     }
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSubmit();
     }
   };
 
   return (
-    <div className="flex w-full items-end gap-2 border-t bg-background p-4">
-      <textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
-        className={cn(
-          'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background',
-          'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2',
-          'focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-          'min-h-[80px] resize-none'
-        )}
-        disabled={disabled}
-      />
-      <button
-        onClick={handleSend}
-        disabled={disabled || !message.trim()}
-        className={cn(
-          'inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground',
-          'hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          'focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50'
-        )}
-      >
-        <SendOutlined />
-      </button>
+    <div className="chat-input">
+      <div className="flex items-center">
+        <textarea
+          className={cn(
+            'chat-input-field',
+            'resize-none',
+            'min-h-[50px]',
+            'max-h-[200px]',
+            disabled && 'opacity-50 cursor-not-allowed'
+          )}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyPress}
+          placeholder="Type a message..."
+          disabled={disabled}
+          rows={1}
+        />
+        <button
+          className={cn(
+            'send-button',
+            (!message.trim() || disabled) && 'opacity-50 cursor-not-allowed'
+          )}
+          onClick={handleSubmit}
+          disabled={!message.trim() || disabled}
+        >
+          Send
+        </button>
+      </div>
+      {disabled && (
+        <div className="text-sm text-gray-400 mt-1">
+          Processing your request...
+        </div>
+      )}
     </div>
   );
 };

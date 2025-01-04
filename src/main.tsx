@@ -1,23 +1,29 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
-import './index.css'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
-// Make environment variables available globally
-declare global {
-  interface Window {
-    env: {
-      VITE_ANTHROPIC_API_KEY: string;
-    };
-  }
-}
+// Initialize leaflet CSS
+import 'leaflet/dist/leaflet.css';
 
-window.env = {
-  VITE_ANTHROPIC_API_KEY: import.meta.env.VITE_ANTHROPIC_API_KEY as string,
-};
+// Fix Leaflet default marker icon issue
+import L from 'leaflet';
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
-)
+  </React.StrictMode>
+);

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { MapMethods, MapCommand } from '../lib/types';
+import { extractMapCommands } from '../lib/commandParser';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -8,17 +10,24 @@ interface Message {
   timestamp: string;
 }
 
-interface Marker {
-  position: [number, number];
-  title: string;
-  description?: string;
-}
-
 interface ChatProps {
-  onUpdateMarkers: (markers: Marker[]) => void;
+  mapMethods?: MapMethods;
 }
 
-export const Chat: React.FC<ChatProps> = ({ onUpdateMarkers }) => {
+const SYSTEM_PROMPT = `You are a helpful assistant with expertise in geography and local knowledge. When discussing locations, be specific about their coordinates and use map commands to interact with the map interface. Available commands:
+
+[zoom_to lat lon zoom] - Focus the map on specific coordinates with optional zoom level
+[add_feature geojson layerId] - Add a new feature to a specific layer
+[modify_feature id properties] - Modify feature properties
+[remove_feature id layerId] - Remove a feature
+[style_feature id style] - Change feature appearance
+[measure type ...features] - Calculate distances or areas
+[buffer feature distance units] - Create buffer zones
+
+Example response with commands:
+"The Tower of London is a historic castle located in central London [zoom_to 51.5081 -0.0759 15]. Let me add it to the landmarks layer [add_feature {"type":"Feature","geometry":{"type":"Point","coordinates":[-0.0759,51.5081]},"properties":{"name":"Tower of London"}} landmarks]."`;
+
+export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -31,21 +40,63 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateMarkers }) => {
     scrollToBottom();
   }, [messages]);
 
-  const parseCoordinates = (text: string): Marker[] => {
-    const markers: Marker[] = [];
-    const regex = /([^[]+)\[(\d+\.\d+),\s*(-?\d+\.\d+)\]/g;
-    let match;
+  const executeMapCommands = (text: string) => {
+    if (!mapMethods) return text;
 
-    while ((match = regex.exec(text)) !== null) {
-      const [, description, lat, lon] = match;
-      markers.push({
-        position: [parseFloat(lat), parseFloat(lon)],
-        title: description.trim(),
-        description: description.trim()
-      });
-    }
+    const commands = extractMapCommands(text);
+    commands.forEach(command => {
+      try {
+        switch (command.type) {
+          case 'zoom_to':
+            mapMethods.zoomTo(command.parameters.coordinates, command.parameters.zoom);
+            break;
+          case 'add_feature':
+            mapMethods.addFeature(
+              command.parameters.feature,
+              command.parameters.layerId,
+              command.parameters.style
+            );
+            break;
+          case 'modify_feature':
+            mapMethods.modifyFeature(
+              command.parameters.featureId,
+              command.parameters.properties
+            );
+            break;
+          case 'remove_feature':
+            mapMethods.removeFeature(
+              command.parameters.featureId,
+              command.parameters.layerId
+            );
+            break;
+          case 'style_feature':
+            mapMethods.styleFeature(
+              command.parameters.featureId,
+              command.parameters.style
+            );
+            break;
+          case 'measure':
+            const result = mapMethods.measure(
+              command.parameters.type,
+              command.parameters.features
+            );
+            console.log(`Measurement result: ${result}`);
+            break;
+          case 'buffer':
+            const buffered = mapMethods.buffer(
+              command.parameters.feature,
+              command.parameters.distance,
+              command.parameters.units
+            );
+            mapMethods.addFeature(buffered, 'buffers');
+            break;
+        }
+      } catch (error) {
+        console.error(`Error executing map command: ${command.type}`, error);
+      }
+    });
 
-    return markers;
+    return text;
   };
 
   const handleSendMessage = async (content: string) => {
@@ -61,18 +112,14 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateMarkers }) => {
     setIsLoading(true);
 
     try {
-      const initialPrompt = "You are a helpful assistant with expertise in geography and local knowledge. When discussing locations, be specific about their coordinates when possible, as this information may be used to update an interactive map. When you mention specific locations, please include their coordinates in [lat, lon] format at the end of the description. For example: 'The British Museum is a world-renowned museum in London [51.5194, -0.1270]'.";
-
       const messageHistory = [
-        { role: 'user' as const, content: initialPrompt },
+        { role: 'system' as const, content: SYSTEM_PROMPT },
         ...messages.map(msg => ({
           role: msg.role as 'user' | 'assistant',
           content: msg.content
         })),
         { role: 'user' as const, content }
       ];
-
-      console.log('API Request:', JSON.stringify({ messages: messageHistory }, null, 2));
 
       const response = await fetch('http://localhost:3001/api/v1/messages', {
         method: 'POST',
@@ -82,7 +129,8 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateMarkers }) => {
         body: JSON.stringify({
           model: 'claude-3-sonnet',
           messages: messageHistory,
-          max_tokens: 4096
+          max_tokens: 4096,
+          temperature: 0.7
         }),
       });
 
@@ -91,31 +139,18 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateMarkers }) => {
       }
 
       const data = await response.json();
-      console.log('API Response:', JSON.stringify(data, null, 2));
-
+      
       if (data.content[0].type === 'text') {
+        const responseText = executeMapCommands(data.content[0].text);
         const assistantMessage: Message = {
           role: 'assistant',
-          content: data.content[0].text,
+          content: responseText,
           timestamp: new Date().toLocaleTimeString(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
-
-        // Parse coordinates and update markers
-        const newMarkers = parseCoordinates(data.content[0].text);
-        if (newMarkers.length > 0) {
-          onUpdateMarkers(newMarkers);
-        }
       }
     } catch (error) {
       console.error('Error calling Claude:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        });
-      }
       const errorMessage: Message = {
         role: 'assistant',
         content: 'I apologize, but I encountered an error processing your request. Please try again.',
