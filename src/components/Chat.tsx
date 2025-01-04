@@ -146,7 +146,7 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-3-sonnet',
+          model: 'claude-3-5-sonnet-20241022',
           messages: messageHistory,
           max_tokens: 4096,
           temperature: 0.7
