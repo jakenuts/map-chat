@@ -1,181 +1,116 @@
 # Developer Log
 
-## 2024-03-19 - Improved Claude Integration and Logging
+## 2024-03-19 - Map History Management
 
 ### Changes Made
-1. Created dedicated service classes for better encapsulation:
-   - `ClaudeService`: Handles all Claude API interactions
-   - `MapService`: Encapsulates map command execution
-   - Added logging utilities for consistent log formatting
+1. Added useMapHistory hook:
+   - Undo/redo stack management
+   - Operation recording
+   - State tracking
+   - History size limits
 
-2. Updated proxy server:
-   - Using latest Anthropic API endpoint (/v1/messages)
-   - Added comprehensive request/response logging
-   - Proper CORS and error handling
+2. Implemented operation types:
+   - Feature creation
+   - Feature modification
+   - Feature deletion
+   - Style changes
+   - Feature movement
 
-3. Refactored Chat component:
-   - Moved Claude API logic to dedicated service
-   - Improved error handling and loading states
-   - Added message timestamps
-   - Optimized rendering with useMemo and useCallback
+3. Added history shortcuts:
+   - Ctrl+Z for undo
+   - Ctrl+Y for redo
+   - Ctrl+Shift+Z alternative redo
+   - Shortcut hints
+
+4. Enhanced logging:
+   - Operation recording
+   - Undo/redo events
+   - Stack management
+   - Error handling
 
 ### Current Status
-- Basic chat functionality with Claude integration
-- Map command parsing and execution
-- Comprehensive logging for debugging
-
-## 2024-03-19 - Map Layer Management Implementation
-
-### Changes Made
-1. Added GeoJSON feature handling:
-   - Created utility functions for type-safe GeoJSON conversions
-   - Implemented proper feature ID management
-   - Added support for all GeoJSON geometry types
-
-2. Implemented layer management system:
-   - Created LayerService for centralized layer state management
-   - Added support for layer groups and feature collections
-   - Implemented layer visibility and style controls
-
-3. Enhanced map command system:
-   - Added type-safe command interfaces
-   - Implemented command execution with proper error handling
-   - Added logging for all map operations
-
-4. Updated MapComponent:
-   - Added layer group initialization
-   - Implemented feature manipulation methods
-   - Added proper cleanup on unmount
-
-## 2024-03-19 - Spatial Analysis Features
-
-### Changes Made
-1. Added Turf.js integration:
-   - Installed and configured @turf/turf package
-   - Created SpatialService for analysis operations
-   - Added type-safe geometry handling
-
-2. Implemented measurement features:
-   - Distance calculations between features
-   - Area calculations for polygons
-   - Proper unit conversions and formatting
-
-3. Added geometry operations:
-   - Buffer creation with configurable distance
-   - Geometry simplification
-   - Centroid calculation
-   - Bounding box computation
-
-4. Enhanced MapComponent:
-   - Integrated spatial analysis methods
-   - Added buffer visualization
-   - Improved feature handling
-
-## 2024-03-19 - Map Control UI Components
-
-### Changes Made
-1. Added MeasurementControl component:
-   - Distance measurement mode
-   - Area measurement mode
-   - Real-time result display
-   - Unit conversion support
-
-2. Implemented BufferControl component:
-   - Distance input with validation
-   - Unit selection (meters, kilometers, miles)
-   - Feature selection integration
-   - Preview functionality
-
-3. Created LayerControl component:
-   - Layer group management
-   - Layer visibility toggles
-   - Style customization
-   - Color picker integration
-
-4. Enhanced user interaction:
-   - Added tooltips and help text
-   - Improved error handling
-   - Added loading states
-   - Responsive design
-
-## 2024-03-19 - Map Interaction Hooks
-
-### Changes Made
-1. Added useMapSelection hook:
-   - Feature selection management
-   - Multi-select support
-   - Selection styling
-   - Click handling
-   - Selection state persistence
-
-2. Implemented useMapShortcuts hook:
-   - Keyboard shortcut handling
-   - Mode switching shortcuts
-   - Operation cancellation
-   - Shortcut hint generation
-
-3. Created useMapMode hook:
-   - Mode state management
-   - Measurement mode handling
-   - Buffer mode handling
-   - Layer panel state
-   - Operation cancellation
-
-4. Enhanced interaction logging:
-   - Selection events
-   - Mode changes
-   - Shortcut usage
-   - Operation completion
-
-### Current Status
-- Map interaction hooks ready for integration
+- History management ready for integration
+- All hooks implemented
 - UI components complete
-- Spatial analysis features operational
-- Layer management system complete
+- Spatial analysis operational
 
 ### Next Steps
-1. Integrate hooks with MapComponent:
+1. Integrate all hooks into MapComponent:
    ```typescript
    const MapComponent: React.FC = () => {
+     // Mode management
      const {
        mode,
        selectedFeatures,
        startMeasurement,
-       // ...other mode handlers
+       startBuffer,
+       cancelOperation
      } = useMapMode();
 
+     // Selection management
      const {
        handleFeatureClick,
        isFeatureSelected,
-       // ...other selection handlers
+       getSelectionStyle
      } = useMapSelection({ map });
 
-     const { getShortcutHint } = useMapShortcuts({
+     // History management
+     const {
+       undo,
+       redo,
+       recordCreate,
+       recordModify
+     } = useMapHistory({
+       onUndo: handleUndo,
+       onRedo: handleRedo
+     });
+
+     // Keyboard shortcuts
+     const { getShortcutHint: getModeShortcut } = useMapShortcuts({
        onMeasure: () => startMeasurement('distance'),
-       // ...other shortcut handlers
+       onBuffer: startBuffer,
+       onCancel: cancelOperation
+     });
+
+     const { getShortcutHint: getHistoryShortcut } = useHistoryShortcuts({
+       onUndo: undo,
+       onRedo: redo
      });
 
      // Component implementation
    };
    ```
 
-2. Add undo/redo system:
-   - Create useMapHistory hook
-   - Track operations in stack
-   - Implement undo/redo logic
-   - Add keyboard shortcuts
+2. Add data persistence:
+   ```typescript
+   interface MapState {
+     layers: LayerGroup[];
+     history: {
+       undoStack: MapOperation[];
+       redoStack: MapOperation[];
+     };
+     selection: {
+       selectedFeatures: string[];
+       activeLayerId?: string;
+     };
+     view: {
+       center: [number, number];
+       zoom: number;
+     };
+   }
+   ```
 
 3. Implement feature editing:
-   - Add vertex editing
+   - Create EditControl component
+   - Add vertex editing mode
    - Support feature splitting
-   - Add feature merging
-   - Property editing UI
+   - Add property editor
 
-4. Add data persistence:
-   - Save state to localStorage
-   - Add export functionality
-   - Support file loading
-   - Auto-save feature
+4. Add export/import:
+   - GeoJSON export
+   - KML support
+   - State persistence
+   - File loading
 
 ### Technical Debt
 - Add hook unit tests
@@ -188,4 +123,4 @@
 - All hooks properly typed
 - Comprehensive logging in place
 - Ready for MapComponent integration
-- Keyboard shortcuts implemented
+- History management complete

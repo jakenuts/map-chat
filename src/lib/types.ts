@@ -124,4 +124,16 @@ export interface MapState {
   layers: LayerGroup[];
   activeLayerId?: string;
   selectedFeatureId?: FeatureId;
+  history?: {
+    undoStack: any[];
+    redoStack: any[];
+  };
+  selection?: {
+    selectedFeatures: string[];
+    activeLayerId?: string;
+  };
+  view?: {
+    center: [number, number];
+    zoom: number;
+  };
 }
