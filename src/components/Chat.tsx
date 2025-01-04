@@ -1,8 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { MapMethods, MapCommand } from '../lib/types';
+import { MapMethods } from '../lib/types';
 import { extractMapCommands } from '../lib/commandParser';
+
+// Logging utilities
+const logMessage = (type: 'send' | 'receive' | 'error', data: any) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${type.toUpperCase()}:`, data);
+};
+
+const logMapCommand = (command: any, success: boolean, error?: any) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] MAP COMMAND ${success ? 'SUCCESS' : 'ERROR'}:`, {
+    command,
+    ...(error && { error: error.message })
+  });
+};
 
 interface Message {
   role: 'user' | 'assistant';
@@ -44,6 +58,8 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
     if (!mapMethods) return text;
 
     const commands = extractMapCommands(text);
+    logMessage('send', { type: 'map_commands', commands });
+
     commands.forEach(command => {
       try {
         switch (command.type) {
@@ -92,6 +108,7 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
             break;
         }
       } catch (error) {
+        logMapCommand(command, false, error);
         console.error(`Error executing map command: ${command.type}`, error);
       }
     });
@@ -121,7 +138,9 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
         { role: 'user' as const, content }
       ];
 
-      const response = await fetch('http://localhost:3001/api/v1/messages', {
+      logMessage('send', { messages: messageHistory });
+
+      const response = await fetch('http://localhost:3002/api/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,12 +154,15 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
       });
 
       if (!response.ok) {
+        const errorData = await response.text();
+        logMessage('error', { status: response.status, error: errorData });
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
+      logMessage('receive', { response: data });
       
-      if (data.content[0].type === 'text') {
+      if (data.content && data.content[0]?.type === 'text') {
         const responseText = executeMapCommands(data.content[0].text);
         const assistantMessage: Message = {
           role: 'assistant',
@@ -149,8 +171,11 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
         };
         setMessages((prev) => [...prev, assistantMessage]);
       }
-    } catch (error) {
-      console.error('Error calling Claude:', error);
+    } catch (error: any) {
+      logMessage('error', { 
+        type: 'claude_api_error', 
+        error: error.message || 'Unknown error occurred'
+      });
       const errorMessage: Message = {
         role: 'assistant',
         content: 'I apologize, but I encountered an error processing your request. Please try again.',
