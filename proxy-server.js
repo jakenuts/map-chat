@@ -31,11 +31,11 @@ const apiProxy = createProxyMiddleware({
   target: 'https://api.anthropic.com',
   changeOrigin: true,
   pathRewrite: {
-    '^/api': ''
+    '^/api/messages': '/v1/messages'
   },
   onProxyReq: (proxyReq, req) => {
     proxyReq.setHeader('x-api-key', process.env.PROXY_ANTHROPIC_API_KEY);
-    proxyReq.setHeader('anthropic-version', '2023-06-01');
+    proxyReq.setHeader('anthropic-version', '2023-01-01');
     proxyReq.setHeader('content-type', 'application/json');
 
     if (req.body) {

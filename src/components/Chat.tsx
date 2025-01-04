@@ -1,22 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { MapMethods } from '../lib/types';
-import { extractMapCommands } from '../lib/commandParser';
-
-// Logging utilities
-const logMessage = (type: 'send' | 'receive' | 'error', data: any) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${type.toUpperCase()}:`, data);
-};
-
-const logMapCommand = (command: any, success: boolean, error?: any) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] MAP COMMAND ${success ? 'SUCCESS' : 'ERROR'}:`, {
-    command,
-    ...(error && { error: error.message })
-  });
-};
+import { ClaudeService, Message as ClaudeMessage } from '../lib/services/claude';
+import { MapService } from '../lib/services/map';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -45,78 +32,23 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Initialize services
+  const claudeService = React.useMemo(() => new ClaudeService(), []);
+  const mapService = React.useMemo(() => mapMethods ? new MapService(mapMethods) : undefined, [mapMethods]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (messagesEndRef.current) {
+      scrollToBottom();
+    }
+  }, [messages, scrollToBottom]);
 
-  const executeMapCommands = (text: string) => {
-    if (!mapMethods) return text;
-
-    const commands = extractMapCommands(text);
-    logMessage('send', { type: 'map_commands', commands });
-
-    commands.forEach(command => {
-      try {
-        switch (command.type) {
-          case 'zoom_to':
-            mapMethods.zoomTo(command.parameters.coordinates, command.parameters.zoom);
-            break;
-          case 'add_feature':
-            mapMethods.addFeature(
-              command.parameters.feature,
-              command.parameters.layerId,
-              command.parameters.style
-            );
-            break;
-          case 'modify_feature':
-            mapMethods.modifyFeature(
-              command.parameters.featureId,
-              command.parameters.properties
-            );
-            break;
-          case 'remove_feature':
-            mapMethods.removeFeature(
-              command.parameters.featureId,
-              command.parameters.layerId
-            );
-            break;
-          case 'style_feature':
-            mapMethods.styleFeature(
-              command.parameters.featureId,
-              command.parameters.style
-            );
-            break;
-          case 'measure':
-            const result = mapMethods.measure(
-              command.parameters.type,
-              command.parameters.features
-            );
-            console.log(`Measurement result: ${result}`);
-            break;
-          case 'buffer':
-            const buffered = mapMethods.buffer(
-              command.parameters.feature,
-              command.parameters.distance,
-              command.parameters.units
-            );
-            mapMethods.addFeature(buffered, 'buffers');
-            break;
-        }
-      } catch (error) {
-        logMapCommand(command, false, error);
-        console.error(`Error executing map command: ${command.type}`, error);
-      }
-    });
-
-    return text;
-  };
-
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
 
     const userMessage: Message = {
@@ -125,79 +57,59 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
       timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
-      const messageHistory = [
-        { role: 'system' as const, content: SYSTEM_PROMPT },
+      const messageHistory: ClaudeMessage[] = [
+        { role: 'system', content: SYSTEM_PROMPT },
         ...messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant',
+          role: msg.role,
           content: msg.content
         })),
-        { role: 'user' as const, content }
+        { role: 'user', content }
       ];
 
-      logMessage('send', { messages: messageHistory });
-
-      const response = await fetch('http://localhost:3002/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          messages: messageHistory,
-          max_tokens: 4096,
-          temperature: 0.7
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        logMessage('error', { status: response.status, error: errorData });
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      logMessage('receive', { response: data });
+      const response = await claudeService.sendMessage(messageHistory);
       
-      if (data.content && data.content[0]?.type === 'text') {
-        const responseText = executeMapCommands(data.content[0].text);
+      if (response.content?.[0]?.type === 'text') {
+        const responseText = mapService ? 
+          mapService.executeMapCommands(response.content[0].text) : 
+          response.content[0].text;
+
         const assistantMessage: Message = {
           role: 'assistant',
           content: responseText,
           timestamp: new Date().toLocaleTimeString(),
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (error: any) {
-      logMessage('error', { 
-        type: 'claude_api_error', 
-        error: error.message || 'Unknown error occurred'
-      });
       const errorMessage: Message = {
         role: 'assistant',
         content: 'I apologize, but I encountered an error processing your request. Please try again.',
         timestamp: new Date().toLocaleTimeString(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [messages, claudeService, mapService]);
+
+  const memoizedMessages = React.useMemo(() => 
+    messages.map((message, index) => (
+      <ChatMessage
+        key={index}
+        role={message.role}
+        content={message.content}
+        timestamp={message.timestamp}
+      />
+    )), [messages]);
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
-          <ChatMessage
-            key={index}
-            role={message.role}
-            content={message.content}
-            timestamp={message.timestamp}
-          />
-        ))}
+        {memoizedMessages}
         <div ref={messagesEndRef} />
       </div>
       <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
