@@ -7,7 +7,7 @@ import './App.css';
 function App() {
   const [mapMethods, setMapMethods] = useState<MapMethods>();
 
-  const handleMapReady = (methods: MapMethods) => {
+  const handleMapMethods = (methods: MapMethods) => {
     setMapMethods(methods);
   };
 
@@ -17,7 +17,7 @@ function App() {
         <Chat mapMethods={mapMethods} />
       </div>
       <div className="w-1/2">
-        <MapComponent onMapReady={handleMapReady} />
+        <MapComponent onMapMethods={handleMapMethods} />
       </div>
     </div>
   );

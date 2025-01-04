@@ -18,6 +18,7 @@ import { withLoading } from './LoadingState';
 import { MeasurementControl } from './controls/MeasurementControl';
 import { BufferControl } from './controls/BufferControl';
 import { LayerControl } from './controls/LayerControl';
+import { LoggingControl } from './controls/LoggingControl';
 
 interface MapComponentProps {
   onMapMethods?: (methods: MapMethods) => void;
@@ -255,6 +256,8 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
         }}
         activeLayerId={state.activeLayerId}
       />
+
+      <LoggingControl />
     </div>
   );
 };
