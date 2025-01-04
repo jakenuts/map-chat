@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapMethods, MapState, Layer, GeoJSONFeature, FeatureId } from '../lib/types';
 import { LayerService } from '../lib/services/layer';
+import { SpatialService } from '../lib/services/spatial';
 import { logMessage } from '../lib/utils/logging';
 import { toGeoJSONFeature, fromGeoJSONFeature } from '../lib/utils/geo';
 import { Feature, Geometry } from 'geojson';
@@ -20,6 +21,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 }) => {
   const mapRef = useRef<L.Map | null>(null);
   const layerServiceRef = useRef<LayerService>(new LayerService(initialState));
+  const spatialServiceRef = useRef<SpatialService>(new SpatialService());
   const [layerGroups, setLayerGroups] = useState<Record<string, L.LayerGroup>>({});
 
   useEffect(() => {
@@ -122,15 +124,23 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         },
 
         measure: (type: 'distance' | 'area', features: GeoJSONFeature[]): number => {
-          // TODO: Implement measurement calculations using turf.js
-          logMessage('map_command', { type: 'measure', measureType: type, features });
-          return 0;
+          if (type === 'distance') {
+            return spatialServiceRef.current.calculateDistance(features);
+          } else {
+            return spatialServiceRef.current.calculateArea(features);
+          }
         },
 
         buffer: (feature: GeoJSONFeature, distance: number, units: 'kilometers' | 'miles' | 'meters'): GeoJSONFeature => {
-          // TODO: Implement buffer creation using turf.js
-          logMessage('map_command', { type: 'buffer', feature, distance, units });
-          return feature;
+          const buffered = spatialServiceRef.current.createBuffer(feature, distance, units);
+          
+          // Add the buffer to the buffers layer
+          if (layerGroups.buffers) {
+            const geoJsonLayer = L.geoJSON(fromGeoJSONFeature(buffered)) as LeafletGeoJSONLayer;
+            layerGroups.buffers.addLayer(geoJsonLayer);
+          }
+
+          return buffered;
         }
       };
 
