@@ -1,117 +1,50 @@
 # Developer Log
 
-## 2024-03-19 - Performance Monitoring Implementation
+## 2024-03-19 - Worker Implementation
 
 ### Changes Made
-1. Added PerformanceMonitor service:
-   - Operation tracking
-   - Threshold monitoring
-   - Performance metrics
-   - Statistical analysis
+1. Added WorkerPool service:
+   - Task management
+   - Queue handling
    - Error handling
+   - Metrics tracking
+   - Pool lifecycle
 
-2. Implemented useMapPerformance hook:
-   - Operation tracking
-   - Async operation support
-   - Performance reporting
-   - Threshold violations
+2. Implemented useMapWorker hook:
+   - Task execution
+   - Batch processing
+   - Timeout handling
    - Error recovery
+   - Metrics reporting
 
-3. Added monitoring features:
-   - Operation timing
-   - Threshold management
-   - Metric collection
-   - Report generation
-   - Violation notifications
+3. Added worker features:
+   - Task queuing
+   - Parallel execution
+   - Resource management
+   - Error handling
+   - Performance tracking
 
 4. Enhanced logging:
-   - Operation tracking
+   - Task tracking
    - Error reporting
    - Performance metrics
-   - Threshold violations
+   - Resource usage
 
 ### Current Status
-- Performance monitoring complete
+- Worker pool complete
 - Hooks integrated
 - Error handling in place
 - Logging implemented
 
 ### Next Steps
-1. Add worker support:
-   ```typescript
-   interface WorkerMessage {
-     type: string;
-     payload: any;
-     taskId: string;
-   }
-
-   interface WorkerTask {
-     id: string;
-     type: string;
-     data: any;
-     resolve: (result: any) => void;
-     reject: (error: Error) => void;
-     startTime: number;
-   }
-
-   class WorkerPool {
-     private workers: Worker[];
-     private queue: WorkerTask[];
-     private active: Map<number, WorkerTask>;
-     private metrics: PerformanceMonitor;
-
-     constructor(workerScript: string, poolSize: number) {
-       this.workers = Array.from(
-         { length: poolSize },
-         () => new Worker(workerScript)
-       );
-       this.queue = [];
-       this.active = new Map();
-       this.metrics = new PerformanceMonitor();
-
-       this.workers.forEach((worker, index) => {
-         worker.onmessage = (e) => this.handleMessage(index, e.data);
-         worker.onerror = (e) => this.handleError(index, e);
-       });
-     }
-
-     execute<T>(task: WorkerTask): Promise<T> {
-       return new Promise((resolve, reject) => {
-         const startTime = Date.now();
-         const wrappedTask = {
-           ...task,
-           resolve: (result: T) => {
-             this.metrics.trackOperation('worker_task', Date.now() - startTime, {
-               taskType: task.type,
-               workerId: task.workerId
-             });
-             resolve(result);
-           },
-           reject
-         };
-
-         this.queue.push(wrappedTask);
-         this.processQueue();
-       });
-     }
-
-     getMetrics(): WorkerMetrics {
-       return {
-         queueLength: this.queue.length,
-         activeWorkers: this.active.size,
-         performance: this.metrics.getReport('worker_task')
-       };
-     }
-   }
-   ```
-
-2. Add batching support:
+1. Add batching support:
    ```typescript
    interface BatchConfig {
      maxSize: number;
      maxDelay: number;
      retryAttempts: number;
      retryDelay: number;
+     onProgress?: (progress: number) => void;
    }
 
    class BatchProcessor<T, R> {
@@ -119,6 +52,7 @@
      private timer: ReturnType<typeof setTimeout> | null;
      private processing: boolean;
      private metrics: PerformanceMonitor;
+     private retryMap: Map<T, number>;
 
      constructor(
        private processor: (items: T[]) => Promise<R[]>,
@@ -128,20 +62,31 @@
        this.timer = null;
        this.processing = false;
        this.metrics = new PerformanceMonitor();
+       this.retryMap = new Map();
      }
 
      async add(item: T): Promise<R> {
        return new Promise((resolve, reject) => {
-         this.batch.push(item);
+         const itemWrapper = {
+           item,
+           resolve,
+           reject,
+           addedAt: Date.now()
+         };
 
-         if (this.batch.length >= this.config.maxSize) {
-           this.processBatch();
-         } else if (!this.timer) {
-           this.timer = setTimeout(() => {
-             this.processBatch();
-           }, this.config.maxDelay);
-         }
+         this.batch.push(itemWrapper);
+         this.scheduleProcessing();
        });
+     }
+
+     private scheduleProcessing() {
+       if (this.batch.length >= this.config.maxSize) {
+         this.processBatch();
+       } else if (!this.timer) {
+         this.timer = setTimeout(() => {
+           this.processBatch();
+         }, this.config.maxDelay);
+       }
      }
 
      private async processBatch() {
@@ -158,19 +103,46 @@
 
        try {
          const startTime = Date.now();
-         const results = await this.processor(items);
+         const results = await this.processWithRetry(items);
          this.metrics.trackOperation('batch_process', Date.now() - startTime, {
-           batchSize: items.length
+           batchSize: items.length,
+           success: true
          });
-         return results;
+
+         items.forEach((item, index) => {
+           item.resolve(results[index]);
+         });
        } catch (error) {
          this.metrics.trackOperation('batch_error', Date.now() - startTime, {
-           error: error instanceof Error ? error.message : 'Unknown error'
+           error: error instanceof Error ? error.message : 'Unknown error',
+           batchSize: items.length
          });
-         throw error;
+
+         items.forEach(item => {
+           item.reject(error);
+         });
        } finally {
          this.processing = false;
+         this.scheduleProcessing();
        }
+     }
+
+     private async processWithRetry(items: T[]): Promise<R[]> {
+       let lastError: Error | null = null;
+       
+       for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
+         try {
+           const results = await this.processor(items);
+           return results;
+         } catch (error) {
+           lastError = error instanceof Error ? error : new Error('Unknown error');
+           await new Promise(resolve => 
+             setTimeout(resolve, this.config.retryDelay * attempt)
+           );
+         }
+       }
+
+       throw lastError || new Error('Processing failed after retries');
      }
 
      getMetrics(): BatchMetrics {
@@ -183,80 +155,185 @@
    }
    ```
 
-3. Add optimization strategies:
+2. Add throttling support:
    ```typescript
-   interface OptimizationConfig {
-     caching: {
-       enabled: boolean;
-       ttl: number;
-       maxSize: number;
-     };
-     workers: {
-       enabled: boolean;
-       poolSize: number;
-     };
-     batching: {
-       enabled: boolean;
-       maxSize: number;
-       maxDelay: number;
-     };
-     monitoring: {
-       enabled: boolean;
-       thresholds: Record<string, number>;
-     };
+   interface ThrottleConfig {
+     maxConcurrent: number;
+     maxPerSecond: number;
+     maxBurstSize: number;
+     cooldownPeriod: number;
    }
 
-   class OptimizationManager {
-     private config: OptimizationConfig;
-     private cache: CacheService;
-     private workers: WorkerPool;
-     private batchProcessor: BatchProcessor;
+   class ThrottleManager {
+     private active: number;
+     private queue: Array<() => Promise<void>>;
+     private lastExecutions: number[];
+     private cooldown: boolean;
      private metrics: PerformanceMonitor;
 
-     constructor(config: OptimizationConfig) {
-       this.config = config;
-       this.cache = new CacheService(config.caching);
-       this.workers = new WorkerPool(config.workers);
-       this.batchProcessor = new BatchProcessor(config.batching);
+     constructor(private config: ThrottleConfig) {
+       this.active = 0;
+       this.queue = [];
+       this.lastExecutions = [];
+       this.cooldown = false;
        this.metrics = new PerformanceMonitor();
      }
 
-     async optimizeOperation<T>(
-       operation: () => Promise<T>,
-       options: {
-         cacheKey?: string;
-         useWorker?: boolean;
-         batchable?: boolean;
-       }
-     ): Promise<T> {
-       const startTime = Date.now();
-       let result: T;
-
-       if (options.cacheKey && this.config.caching.enabled) {
-         result = await this.tryCache(options.cacheKey, operation);
-       } else if (options.useWorker && this.config.workers.enabled) {
-         result = await this.tryWorker(operation);
-       } else if (options.batchable && this.config.batching.enabled) {
-         result = await this.tryBatch(operation);
-       } else {
-         result = await operation();
+     async execute<T>(operation: () => Promise<T>): Promise<T> {
+       if (this.shouldThrottle()) {
+         await this.waitForCapacity();
        }
 
-       this.metrics.trackOperation('optimized_operation', Date.now() - startTime, {
-         cached: !!options.cacheKey,
-         worker: !!options.useWorker,
-         batched: !!options.batchable
-       });
+       this.active++;
+       this.lastExecutions.push(Date.now());
 
-       return result;
+       try {
+         const startTime = Date.now();
+         const result = await operation();
+         this.metrics.trackOperation('throttled_operation', Date.now() - startTime);
+         return result;
+       } finally {
+         this.active--;
+         this.processQueue();
+       }
      }
 
-     getMetrics(): OptimizationMetrics {
+     private shouldThrottle(): boolean {
+       const now = Date.now();
+       this.lastExecutions = this.lastExecutions.filter(
+         time => now - time < 1000
+       );
+
+       return (
+         this.active >= this.config.maxConcurrent ||
+         this.lastExecutions.length >= this.config.maxPerSecond ||
+         this.cooldown
+       );
+     }
+
+     private async waitForCapacity(): Promise<void> {
+       return new Promise(resolve => {
+         this.queue.push(resolve);
+       });
+     }
+
+     private processQueue() {
+       if (this.queue.length > 0 && !this.shouldThrottle()) {
+         const next = this.queue.shift();
+         next?.();
+       }
+
+       if (this.lastExecutions.length >= this.config.maxBurstSize) {
+         this.cooldown = true;
+         setTimeout(() => {
+           this.cooldown = false;
+           this.processQueue();
+         }, this.config.cooldownPeriod);
+       }
+     }
+
+     getMetrics(): ThrottleMetrics {
        return {
-         cache: this.cache.getStats(),
-         workers: this.workers.getMetrics(),
-         batching: this.batchProcessor.getMetrics(),
-         performance: this.metrics.getReport('optimized_operation')
+         activeOperations: this.active,
+         queueLength: this.queue.length,
+         operationsPerSecond: this.lastExecutions.length,
+         isCooling: this.cooldown,
+         performance: this.metrics.getReport('throttled_operation')
+       };
+     }
+   }
+   ```
+
+3. Add debouncing support:
+   ```typescript
+   interface DebounceConfig {
+     wait: number;
+     maxWait?: number;
+     leading?: boolean;
+     trailing?: boolean;
+   }
+
+   class DebounceManager {
+     private timeout: ReturnType<typeof setTimeout> | null;
+     private maxTimeout: ReturnType<typeof setTimeout> | null;
+     private lastCallTime: number | null;
+     private lastInvokeTime: number;
+     private metrics: PerformanceMonitor;
+
+     constructor(private config: DebounceConfig) {
+       this.timeout = null;
+       this.maxTimeout = null;
+       this.lastCallTime = null;
+       this.lastInvokeTime = 0;
+       this.metrics = new PerformanceMonitor();
+     }
+
+     execute<T>(operation: () => Promise<T>): Promise<T> {
+       const time = Date.now();
+       const isInvoking = this.shouldInvoke(time);
+
+       this.lastCallTime = time;
+       if (isInvoking) {
+         return this.invokeOperation(operation);
+       }
+
+       return new Promise((resolve, reject) => {
+         const timeoutCallback = () => {
+           this.invokeOperation(operation).then(resolve).catch(reject);
+         };
+
+         if (this.timeout) {
+           clearTimeout(this.timeout);
+         }
+
+         this.timeout = setTimeout(timeoutCallback, this.config.wait);
+
+         if (this.config.maxWait && !this.maxTimeout) {
+           this.maxTimeout = setTimeout(timeoutCallback, this.config.maxWait);
+         }
+       });
+     }
+
+     private shouldInvoke(time: number): boolean {
+       if (this.lastCallTime === null) {
+         return true;
+       }
+
+       const timeSinceLastCall = time - this.lastCallTime;
+       const timeSinceLastInvoke = time - this.lastInvokeTime;
+
+       return (
+         this.lastInvokeTime === 0 ||
+         timeSinceLastCall >= this.config.wait ||
+         (this.config.maxWait !== undefined &&
+           timeSinceLastInvoke >= this.config.maxWait)
+       );
+     }
+
+     private async invokeOperation<T>(
+       operation: () => Promise<T>
+     ): Promise<T> {
+       this.lastInvokeTime = Date.now();
+       const startTime = Date.now();
+
+       try {
+         const result = await operation();
+         this.metrics.trackOperation('debounced_operation', Date.now() - startTime);
+         return result;
+       } catch (error) {
+         this.metrics.trackOperation('debounce_error', Date.now() - startTime, {
+           error: error instanceof Error ? error.message : 'Unknown error'
+         });
+         throw error;
+       }
+     }
+
+     getMetrics(): DebounceMetrics {
+       return {
+         lastCallTime: this.lastCallTime,
+         lastInvokeTime: this.lastInvokeTime,
+         isWaiting: this.timeout !== null,
+         performance: this.metrics.getReport('debounced_operation')
        };
      }
    }
@@ -264,31 +341,31 @@
 
 ### Technical Debt
 1. Add tests:
-   - Performance tests
-   - Load tests
-   - Stress tests
-   - Benchmark tests
+   - Worker pool tests
+   - Task execution tests
+   - Batch processing tests
+   - Error handling tests
 
-2. Improve monitoring:
-   - Add real-time monitoring
-   - Add alerting
-   - Add dashboards
-   - Add profiling
+2. Improve error handling:
+   - Add retry mechanisms
+   - Add circuit breakers
+   - Add fallback options
+   - Add monitoring
 
 3. Optimize performance:
-   - Add worker support
    - Add batching
    - Add throttling
    - Add debouncing
+   - Add profiling
 
 4. Enhance documentation:
-   - Add performance guides
+   - Add worker guides
    - Add optimization tips
    - Add benchmarks
    - Add troubleshooting
 
 ### Notes
-- Performance monitoring working
+- Worker pool working efficiently
 - Error handling robust
-- Metrics collection ready
-- Ready for worker implementation
+- Performance monitoring ready
+- Ready for batching implementation
