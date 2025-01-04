@@ -84,21 +84,21 @@ export const useMapPersistence = ({
   }, []);
 
   const setupAutoSave = useCallback((getState: () => MapState) => {
+    let lastSavedState = '';
+    
     const intervalId = setInterval(() => {
       const currentState = getState();
-      saveState(currentState);
+      const currentStateString = JSON.stringify(currentState);
+      
+      // Only save if state has changed
+      if (currentStateString !== lastSavedState) {
+        saveState(currentState);
+        lastSavedState = currentStateString;
+      }
     }, AUTO_SAVE_INTERVAL);
 
     return () => clearInterval(intervalId);
-  }, [saveState]);
-
-  // Load state on mount
-  useEffect(() => {
-    const savedState = loadState();
-    if (savedState) {
-      onStateLoad?.(savedState);
-    }
-  }, [loadState, onStateLoad]);
+  }, []); // Remove saveState dependency since it's stable
 
   return {
     saveState,

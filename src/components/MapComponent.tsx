@@ -53,12 +53,10 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
 
   // Handle undo/redo
   const handleUndo = useCallback((operation: any) => {
-    // Implement undo logic based on operation type
     logMessage('map_command', { type: 'undo', operation });
   }, []);
 
   const handleRedo = useCallback((operation: any) => {
-    // Implement redo logic based on operation type
     logMessage('map_command', { type: 'redo', operation });
   }, []);
 
@@ -109,15 +107,10 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
     onStateError: handleError
   });
 
-  // Setup auto-save
-  useEffect(() => {
-    return setupAutoSave(() => state);
-  }, [setupAutoSave, state]);
-
-  // Initialize map
+  // Initialize map only once
   useEffect(() => {
     if (!mapRef.current) {
-      const map = L.map('map').setView(state.center, state.zoom);
+      const map = L.map('map').setView([0, 0], 2);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
@@ -130,12 +123,6 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
         buffers: L.layerGroup().addTo(map)
       };
       setLayerGroups(defaultGroups);
-
-      // Load saved state
-      const savedState = loadState();
-      if (savedState) {
-        setState(savedState);
-      }
     }
 
     return () => {
@@ -144,12 +131,41 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
         mapRef.current = null;
       }
     };
-  }, [loadState, state.center, state.zoom]);
+  }, []); // Empty dependency array - only run once on mount
 
-  // Expose map methods
+  // Load saved state
   useEffect(() => {
-    if (mapRef.current && onMapMethods) {
-      const methods: MapMethods = {
+    const savedState = loadState();
+    if (savedState) {
+      setState(savedState);
+    }
+  }, [loadState]); // Only depends on loadState function
+
+  // Update map view when state changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setView(state.center, state.zoom);
+    }
+  }, [state.center, state.zoom]);
+
+  // Setup auto-save with debounce
+  useEffect(() => {
+    const cleanup = setupAutoSave(() => ({
+      center: state.center,
+      zoom: state.zoom,
+      layers: state.layers,
+      activeLayerId: state.activeLayerId
+    }));
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [setupAutoSave]); // Remove state from dependencies
+
+  // Define stable map methods with useCallback
+  const mapMethods = useCallback((): MapMethods => {
+    if (!mapRef.current) return {} as MapMethods;
+    
+    return {
         zoomTo: (coordinates: [number, number], zoom: number = 13) => {
           mapRef.current?.setView(coordinates, zoom);
           logMessage('map_command', { type: 'zoom_to', coordinates, zoom });
@@ -211,9 +227,14 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
         }
       };
 
-      onMapMethods(methods);
+  }, [recordCreate, recordModify, recordDelete, recordStyle]);
+
+  // Expose map methods
+  useEffect(() => {
+    if (mapRef.current && onMapMethods) {
+      onMapMethods(mapMethods());
     }
-  }, [onMapMethods, layerGroups, recordCreate, recordModify, recordDelete, recordStyle]);
+  }, [onMapMethods, mapMethods]);
 
   return (
     <div className="relative h-full">
