@@ -3,6 +3,33 @@
 ## Project Vision
 Map Chat is an advanced geospatial chat interface that combines AI-powered conversation with interactive mapping capabilities. Users can manipulate and analyze geographic data through natural language commands, with the AI assistant understanding and executing complex spatial operations while maintaining context across conversations.
 
+## Architecture
+
+### Proxy Server
+The project includes a proxy server (proxy-server.js) that serves several critical functions:
+
+1. Security
+   - Protects the Anthropic API key by keeping it server-side
+   - Prevents direct exposure of credentials in client-side code
+   - Manages API authentication headers
+
+2. CORS and Request Management
+   - Handles Cross-Origin Resource Sharing (CORS) headers
+   - Manages API versioning through header transformation
+   - Provides request/response logging for debugging
+   - Transforms API endpoints for cleaner client integration
+
+3. Request Processing
+   - Rewrites paths from /api/messages to /v1/messages
+   - Adds necessary Anthropic API headers
+   - Manages content-type and other HTTP headers
+   - Provides detailed request/response logging
+
+4. Error Handling
+   - Logs API interactions for debugging
+   - Provides consistent error reporting
+   - Maintains security during error states
+
 ## Current Features (✓ = Completed)
 - Core Infrastructure
   - ✓ React + TypeScript setup with Vite

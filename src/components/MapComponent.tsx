@@ -60,7 +60,7 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
     logMessage('map_command', { type: 'redo', operation });
   }, []);
 
-  // Initialize services and hooks
+  // Initialize services and hooks with stable references
   const {
     mode,
     selectedFeatures,
@@ -70,9 +70,11 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
     updateSelectedFeatures
   } = useMapMode();
 
+  const stableUpdateSelectedFeatures = useCallback(updateSelectedFeatures, [updateSelectedFeatures]);
+
   useMapSelection({
     map: mapRef.current,
-    onSelect: updateSelectedFeatures
+    onSelect: stableUpdateSelectedFeatures
   });
 
   const {
@@ -229,11 +231,15 @@ const MapComponentBase: React.FC<MapComponentProps> = ({
 
   }, [recordCreate, recordModify, recordDelete, recordStyle]);
 
-  // Expose map methods
+  // Expose map methods with debounce
   useEffect(() => {
-    if (mapRef.current && onMapMethods) {
+    if (!mapRef.current || !onMapMethods) return;
+
+    const timeoutId = setTimeout(() => {
       onMapMethods(mapMethods());
-    }
+    }, 100); // Debounce map method updates
+
+    return () => clearTimeout(timeoutId);
   }, [onMapMethods, mapMethods]);
 
   return (

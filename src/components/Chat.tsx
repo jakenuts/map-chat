@@ -37,39 +37,44 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
   const claudeService = React.useMemo(() => new ClaudeService(), []);
   const mapService = React.useMemo(() => mapMethods ? new MapService(mapMethods) : undefined, [mapMethods]);
 
+  // Scroll handler
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    if (messagesEndRef.current) {
-      scrollToBottom();
-    }
-  }, [messages, scrollToBottom]);
+    scrollToBottom();
+  }, [messages.length, scrollToBottom]);
+
+  // Memoize message history preparation
+  const prepareMessageHistory = useCallback((content: string): ClaudeMessage[] => [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    })),
+    { role: 'user', content }
+  ], [messages]);
+
+  // Memoize message creation
+  const createMessage = useCallback((role: 'user' | 'assistant', content: string): Message => ({
+    role,
+    content,
+    timestamp: new Date().toLocaleTimeString(),
+  }), []);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
 
-    const userMessage: Message = {
-      role: 'user',
-      content,
-      timestamp: new Date().toLocaleTimeString(),
-    };
-
+    const userMessage = createMessage('user', content);
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
-      const messageHistory: ClaudeMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...messages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        })),
-        { role: 'user', content }
-      ];
-
+      const messageHistory = prepareMessageHistory(content);
       const response = await claudeService.sendMessage(messageHistory);
       
       if (response.content?.[0]?.type === 'text') {
@@ -77,34 +82,29 @@ export const Chat: React.FC<ChatProps> = ({ mapMethods }) => {
           mapService.executeMapCommands(response.content[0].text) : 
           response.content[0].text;
 
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: responseText,
-          timestamp: new Date().toLocaleTimeString(),
-        };
+        const assistantMessage = createMessage('assistant', responseText);
         setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (error: any) {
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: 'I apologize, but I encountered an error processing your request. Please try again.',
-        timestamp: new Date().toLocaleTimeString(),
-      };
+      const errorMessage = createMessage('assistant', 
+        'I apologize, but I encountered an error processing your request. Please try again.'
+      );
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  }, [messages, claudeService, mapService]);
+  }, [createMessage, prepareMessageHistory, claudeService, mapService]);
 
   const memoizedMessages = React.useMemo(() => 
     messages.map((message, index) => (
       <ChatMessage
-        key={index}
+        key={`${message.timestamp}-${index}`}
         role={message.role}
         content={message.content}
         timestamp={message.timestamp}
       />
     )), [messages]);
+
 
   return (
     <div className="flex h-full flex-col">
