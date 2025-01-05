@@ -1,192 +1,166 @@
-# Map Chat - Advanced Geospatial Chat Interface
+# Map Chat Project Overview
 
-## Project Vision
-Map Chat is an advanced geospatial chat interface that combines AI-powered conversation with interactive mapping capabilities. Users can manipulate and analyze geographic data through natural language commands, with the AI assistant understanding and executing complex spatial operations while maintaining context across conversations.
+## Project Description
+Map Chat is an interactive web application that combines chat functionality with map visualization capabilities. It uses Claude AI to provide intelligent responses about geographical locations and can manipulate a map interface based on the conversation.
+
+## Key Features
+1. Chat Interface:
+   - Real-time communication with Claude AI
+   - Geographic information queries
+   - Map command integration
+   - Error handling and recovery
+
+2. Map Integration:
+   - Interactive map display
+   - Location visualization
+   - Geographic feature manipulation
+   - Command parsing and execution
+
+3. AI Integration:
+   - Claude 3 Sonnet model integration
+   - Geographic expertise
+   - Map command generation
+   - Context-aware responses
+
+## Technical Stack
+
+### Frontend
+- React 19.0.0
+- TypeScript
+- Vite 6.0.7
+- Tailwind CSS
+- Leaflet for mapping
+
+### AI Integration
+- @anthropic-ai/sdk 0.33.1
+- Claude-3-5-sonnet-20241022 model
+- Browser-compatible configuration
+- Type-safe implementation
+
+### Development Tools
+- pnpm package manager
+- ESLint
+- TypeScript compiler
+- Vite dev server
+- Testing utilities
 
 ## Architecture
 
-### Proxy Server
-The project includes a proxy server (proxy-server.js) that serves several critical functions:
+### Core Components
+1. Chat Component:
+   - Message handling
+   - User input management
+   - Response rendering
+   - Error boundaries
 
-1. Security
-   - Protects the Anthropic API key by keeping it server-side
-   - Prevents direct exposure of credentials in client-side code
-   - Manages API authentication headers
+2. Map Component:
+   - Leaflet integration
+   - Command execution
+   - Feature management
+   - Geographic visualization
 
-2. CORS and Request Management
-   - Handles Cross-Origin Resource Sharing (CORS) headers
-   - Manages API versioning through header transformation
-   - Provides request/response logging for debugging
-   - Transforms API endpoints for cleaner client integration
+3. Claude Service:
+   - AI communication
+   - Message formatting
+   - Response parsing
+   - Error handling
 
-3. Request Processing
-   - Rewrites paths from /api/messages to /v1/messages
-   - Adds necessary Anthropic API headers
-   - Manages content-type and other HTTP headers
-   - Provides detailed request/response logging
+### Services
+1. Map Service:
+   - Command parsing
+   - Feature manipulation
+   - Geographic calculations
+   - State management
 
-4. Error Handling
-   - Logs API interactions for debugging
-   - Provides consistent error reporting
-   - Maintains security during error states
+2. Claude Service:
+   - AI communication
+   - Message handling
+   - Response transformation
+   - Error management
 
-## Current Features (✓ = Completed)
-- Core Infrastructure
-  - ✓ React + TypeScript setup with Vite
-  - ✓ Split-pane interface (Chat/Map)
-  - ✓ Leaflet map integration
-  - ✓ Claude API integration
-  - ✓ Proxy server for API security
-  - ✓ Environment variable management
-  - ✓ Basic coordinate parsing and marker placement
+## Development Setup
 
-- Chat Interface
-  - ✓ Message history display
-  - ✓ Real-time message updates
-  - ✓ Loading states
-  - ✓ Error handling
-  - ⚡ Context-aware conversations (In Progress)
+### Prerequisites
+- Node.js
+- pnpm
+- Claude API key
+- Modern web browser
 
-- Map Features
-  - ✓ Basic marker placement
-  - ✓ OpenStreetMap integration
-  - ⚡ Dynamic layer management (In Progress)
-  - ⚡ Map control commands (In Progress)
+### Environment Configuration
+```bash
+# Required environment variables
+VITE_ANTHROPIC_API_KEY=your-api-key
+```
 
-## Planned Features
-1. Map Control Commands
-   - zoom_to: Focus map on specific location/feature
-   - add_feature: Add new elements to dynamic layers
-   - modify_feature: Edit existing features
-   - remove_feature: Delete features
-   - style_feature: Change feature appearance
-   - measure: Calculate distances/areas
-   - buffer: Create buffer zones
-
-2. Data Management
-   - Import/Export KML files
-   - Photo geotagging and display
-   - External data source integration
-   - Layer management system
-   - Custom styling options
-   - Version control for features
-
-3. Analysis Tools
-   - Spatial queries
-   - Distance calculations
-   - Area measurements
-   - Routing capabilities
-   - Geocoding/reverse geocoding
-   - Terrain analysis
-
-4. UI Enhancements
-   - Layer control panel
-   - Feature property editor
-   - Style editor
-   - Export options
-   - Search functionality
-   - History browser
-
-## Implementation Steps
-
-### Current Phase (Map Control Integration)
-1. ⚡ Define map control command interface
-   ```typescript
-   interface MapCommand {
-     type: 'zoom_to' | 'add_feature' | 'modify_feature' | 'remove_feature' | 'style_feature';
-     parameters: Record<string, any>;
-   }
+### Getting Started
+1. Install dependencies:
+   ```bash
+   pnpm install
    ```
 
-2. ⚡ Implement command parser in Chat component
-   - Parse natural language into structured commands
-   - Validate command parameters
-   - Handle command errors
-
-3. ⚡ Add map control methods to MapComponent
-   ```typescript
-   interface MapMethods {
-     zoomTo(coordinates: [number, number], zoom: number): void;
-     addFeature(feature: GeoJSON.Feature): void;
-     modifyFeature(id: string, properties: any): void;
-     removeFeature(id: string): void;
-     styleFeature(id: string, style: L.PathOptions): void;
-   }
+2. Start development server:
+   ```bash
+   pnpm start
    ```
 
-4. Next Steps:
-   - Implement layer management system
-   - Add KML import/export functionality
-   - Create feature property editor
-   - Add style editor interface
-   - Implement history tracking
+3. Run tests:
+   ```bash
+   pnpm test
+   ```
 
-### Future Phases
-1. Data Import/Export (Priority: High)
-   - KML parser implementation
-   - File upload interface
-   - Export functionality
-   - Data validation
+## Project Structure
+```
+src/
+  ├── components/       # React components
+  ├── lib/             # Core libraries
+  │   ├── services/    # Service implementations
+  │   ├── utils/       # Utility functions
+  │   └── hooks/       # React hooks
+  ├── assets/          # Static assets
+  └── types/           # TypeScript definitions
+```
 
-2. Analysis Tools (Priority: Medium)
-   - Spatial query engine
-   - Measurement tools
-   - Routing integration
-   - Terrain analysis
+## Best Practices
+1. Code Quality:
+   - TypeScript for type safety
+   - ESLint for code style
+   - Error boundaries for resilience
+   - Comprehensive logging
 
-3. UI Improvements (Priority: Medium)
-   - Layer panel design
-   - Property editor
-   - Style interface
-   - History browser
+2. Development Workflow:
+   - Regular commits
+   - Documentation updates
+   - Testing before deployment
+   - Error handling
 
-4. Advanced Features (Priority: Low)
-   - 3D visualization
-   - Time-based animations
-   - Collaborative editing
-   - Custom projections
+3. Security:
+   - Environment variable management
+   - API key protection
+   - Safe browser configuration
+   - Error message sanitization
 
-## Development Handoff Prompt
+## Future Enhancements
+1. Features:
+   - Additional map commands
+   - Enhanced visualization
+   - Batch operations
+   - Performance optimizations
 
-You are continuing development of the Map Chat project, an advanced geospatial chat interface. The project combines AI-powered conversation with interactive mapping capabilities. Here's your current context:
+2. Technical:
+   - Additional test coverage
+   - Performance monitoring
+   - Error tracking
+   - Analytics integration
 
-1. The project uses React 19, TypeScript, and Leaflet for mapping.
-2. Claude API integration is implemented but needs enhancement for map control commands.
-3. Current focus is on implementing map control features (zoom_to, add_feature, etc.).
-4. The codebase follows functional React patterns with TypeScript for type safety.
+## Documentation
+- Developer Log: Detailed development history
+- API Documentation: Service interfaces
+- Component Documentation: Usage guides
+- Setup Guide: Installation steps
 
-Your immediate tasks:
-1. Implement the MapCommand interface and command parser
-2. Add map control methods to MapComponent
-3. Enhance Claude's understanding of spatial commands
-4. Begin work on the layer management system
-
-Key files to focus on:
-- src/components/MapComponent.tsx: Add map control methods
-- src/components/Chat.tsx: Enhance command parsing
-- src/lib/utils.ts: Add command validation utilities
-
-Development standards:
-1. Use TypeScript for all new code
-2. Write tests for new functionality
-3. Document all public interfaces
-4. Follow existing code style
-5. Maintain type safety
-6. Use functional components with hooks
-7. Keep components focused and modular
-
-The project aims to be a professional-grade tool for geospatial data manipulation through natural language. Maintain high standards for code quality, performance, and user experience.
-
-## Next Development Session
-
-The next development session should focus on:
-1. Implementing the map control command system
-2. Testing command parsing and execution
-3. Enhancing Claude's understanding of spatial operations
-4. Beginning work on the layer management system
-
-Remember to:
-- Update documentation as features are added
-- Maintain type safety throughout
-- Consider edge cases and error states
-- Keep the codebase clean and maintainable
+## Support
+For issues and questions:
+1. Check the developer log
+2. Review error messages
+3. Test in isolation
+4. Update dependencies
